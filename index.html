@@ -146,7 +146,7 @@ async function drawChart() {
   start.setDate(start.getDate() - days);
   let labels = [], vals = [];
   try {
-    const r = await fetch('https://api.frankfurter.app/' + ymd(start) + '..' + ymd(end) + '?from=USD&to=JPY');
+    const r = await fetch('https://api.frankfurter.dev/v1/' + ymd(start) + '..' + ymd(end) + '?from=USD&to=JPY');
     const j = await r.json();
     labels = Object.keys(j.rates);
     vals = labels.map(k => j.rates[k].JPY);
