@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ドル円ウォッチャー</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --navy:#1f3864; --bg:#f4f6fa; --ok:#1a8f4a; --warn:#c0392b; --muted:#667; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif; background:var(--bg); color:#222; }
+  header { background:var(--navy); color:#fff; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  header h1 { margin:0; font-size:20px; }
+  header .upd { font-size:13px; opacity:.85; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+  .card { background:#fff; border-radius:10px; padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .card .lbl { font-size:13px; color:var(--muted); }
+  .card .val { font-size:30px; font-weight:bold; margin-top:4px; }
+  .card .sub { font-size:12px; color:var(--muted); margin-top:4px; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); }
+  .panel { background:#fff; border-radius:10px; padding:16px; margin-top:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .panel h2 { font-size:16px; margin:0 0 10px; }
+  .chartbox { position:relative; height:340px; }
+  .range button { border:1px solid var(--navy); background:#fff; color:var(--navy); padding:4px 12px; border-radius:14px; cursor:pointer; margin-right:4px; }
+  .range button.on { background:var(--navy); color:#fff; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { padding:7px 8px; border-bottom:1px solid #e3e6ee; text-align:right; }
+  th:first-child, td:first-child, th:last-child, td:last-child { text-align:left; }
+  th { background:#eef1f7; }
+  a.btn { display:inline-block; background:var(--navy); color:#fff; text-decoration:none; padding:8px 14px; border-radius:6px; font-size:14px; }
+  .note { font-size:12px; color:var(--muted); margin-top:8px; line-height:1.6; }
+  #err { display:none; background:#fdecea; color:var(--warn); padding:10px 14px; border-radius:8px; margin-bottom:12px; }
+  .reload { background:transparent; border:1px solid #fff; color:#fff; padding:4px 12px; border-radius:6px; cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ドル円ウォッチャー</h1>
+  <div><span class="upd" id="upd">読み込み中…</span> <button class="reload" onclick="load()">更新</button></div>
+</header>
+<main>
+  <div id="err"></div>
+
+  <div class="cards">
+    <div class="card"><div class="lbl">メットライフ目安（円で払うとき）</div><div class="val" id="conv">–</div><div class="sub" id="convSub"></div></div>
+    <div class="card"><div class="lbl">ドル円（市場）</div><div class="val" id="rate">–</div><div class="sub">Googleファイナンス・最大20分遅れ</div></div>
+    <div class="card"><div class="lbl">目標まであと</div><div class="val" id="gap">–</div><div class="sub" id="gapSub"></div></div>
+    <div class="card"><div class="lbl">支払い期限まで</div><div class="val" id="days">–</div><div class="sub" id="daysSub"></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>推移</h2>
+    <div class="range" id="range">
+      <button data-d="30">1か月</button><button data-d="90" class="on">3か月</button><button data-d="180">6か月</button><button data-d="365">1年</button>
+    </div>
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+    <div class="note">グラフのドル円は欧州中央銀行の参照レート（1日1回）です。メットライフ目安はそれに上乗せ額を足した値です。</div>
+  </div>
+
+  <div class="panel">
+    <h2>毎日の記録</h2>
+    <table>
+      <thead><tr><th>日付</th><th>ドル円</th><th>メットライフ目安</th><th>前日比</th><th>通知</th></tr></thead>
+      <tbody id="log"><tr><td colspan="5">読み込み中…</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>メットライフ公式レート</h2>
+    <a class="btn" id="mlink" href="https://www.metlife.co.jp/lf1/ahplf1/ex_LIST.html" target="_blank" rel="noopener">為替レート一覧を開く</a>
+    <div class="note">営業日の10時30分ごろに掲載されます。メットライフの口座に着金した日のレートが適用されるので、レートを確認したら当日中に着金するよう振り込んでください。</div>
+  </div>
+</main>
+
+<script>
+// ▼ GASウェブアプリのURL（デプロイ後に貼り替える）
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyVwqpEX-JzpbefGv63FaLgRuEhyqa0Sg-U7CEkid_8j9z-RhcDTKmwW-ItQAFTGLE-rA/exec';
+
+let state = null, chart = null, days = 90;
+
+function yen(n) { return (n == null || isNaN(n)) ? '–' : Number(n).toFixed(2) + '円'; }
+function ymd(d) { return d.toISOString().slice(0, 10); }
+
+async function load() {
+  document.getElementById('upd').textContent = '読み込み中…';
+  try {
+    const res = await fetch(GAS_URL);
+    state = await res.json();
+    render();
+    drawChart();
+  } catch (e) {
+    const el = document.getElementById('err');
+    el.style.display = 'block';
+    el.textContent = 'データを読み込めませんでした。GAS_URL の設定とデプロイを確認してください。（' + e + '）';
+    document.getElementById('upd').textContent = '';
+  }
+}
+
+function render() {
+  const s = state;
+  document.getElementById('upd').textContent = s.updated + ' 時点';
+  document.getElementById('rate').textContent = yen(s.rate);
+  document.getElementById('conv').textContent = yen(s.conv);
+  document.getElementById('convSub').textContent = 'ドル円＋' + s.margin + '円で計算';
+
+  const judge = s.base === 'ドル円' ? s.rate : s.conv;
+  const gap = judge - s.target;
+  const gapEl = document.getElementById('gap');
+  gapEl.textContent = gap <= 0 ? '達成' : gap.toFixed(2) + '円';
+  gapEl.className = 'val ' + (gap <= 0 ? 'ok' : '');
+  document.getElementById('gapSub').textContent = '目標 ' + s.target + '円以下（' + s.base + 'で判定）';
+
+  const dEl = document.getElementById('days');
+  if (s.deadline) {
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const dl = new Date(s.deadline.replace(/\//g, '-') + 'T00:00:00');
+    const n = Math.round((dl - t) / 86400000);
+    dEl.textContent = n >= 0 ? n + '日' : '期限切れ';
+    dEl.className = 'val ' + (n <= s.warnDays ? 'warn' : '');
+    document.getElementById('daysSub').textContent = s.deadline + '（' + s.warnDays + '日前から通知）';
+  } else {
+    dEl.textContent = '未設定';
+    document.getElementById('daysSub').textContent = 'スプレッドシートの設定で入力';
+  }
+
+  document.getElementById('mlink').href = s.metlifeUrl;
+
+  const tb = document.getElementById('log');
+  tb.innerHTML = s.log.length ? '' : '<tr><td colspan="5">まだ記録がありません</td></tr>';
+  s.log.forEach(r => {
+    const tr = document.createElement('tr');
+    const diff = parseFloat(r.diff);
+    [r.date, r.rate, r.conv, r.diff, r.note].forEach((v, i) => {
+      const td = document.createElement('td');
+      td.textContent = v;
+      if (i === 3 && !isNaN(diff)) td.className = diff < 0 ? 'ok' : (diff > 0 ? 'warn' : '');
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+}
+
+async function drawChart() {
+  const end = new Date(), start = new Date();
+  start.setDate(start.getDate() - days);
+  let labels = [], vals = [];
+  try {
+    const r = await fetch('https://api.frankfurter.app/' + ymd(start) + '..' + ymd(end) + '?from=USD&to=JPY');
+    const j = await r.json();
+    labels = Object.keys(j.rates);
+    vals = labels.map(k => j.rates[k].JPY);
+  } catch (e) { /* 取得できない場合は記録シートから */ }
+  if (!labels.length && state.log.length) {
+    const rev = state.log.slice().reverse();
+    labels = rev.map(r => r.date); vals = rev.map(r => parseFloat(r.rate));
+  }
+  if (state.rate) { labels.push('いま'); vals.push(state.rate); }
+
+  const m = state.margin;
+  const ds = [
+    { label: 'ドル円', data: vals, borderColor: '#1f3864', backgroundColor: '#1f3864', pointRadius: 0, borderWidth: 2, tension: .2 },
+    { label: 'メットライフ目安', data: vals.map(v => v + m), borderColor: '#8a9cc2', pointRadius: 0, borderWidth: 1.5, borderDash: [4, 3], tension: .2 },
+    { label: '目標ライン（' + state.base + 'で' + state.target + '円）', data: vals.map(() => state.target), borderColor: '#1a8f4a', pointRadius: 0, borderWidth: 1.5, borderDash: [8, 4] }
+  ];
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('chart'), {
+    type: 'line',
+    data: { labels: labels, datasets: ds },
+    options: {
+      maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + '円' } } },
+      scales: { y: { ticks: { callback: v => v + '円' } }, x: { ticks: { maxTicksLimit: 8 } } }
+    }
+  });
+}
+
+document.querySelectorAll('#range button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#range button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); days = Number(b.dataset.d); drawChart();
+});
+
+load();
+</script>
+</body>
+</html>
