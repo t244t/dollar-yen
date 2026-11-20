@@ -14,6 +14,8 @@
   header .upd { font-size:13px; opacity:.85; }
   main { max-width:1100px; margin:0 auto; padding:16px; }
   .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+  .card.main { border:2px solid var(--navy); }
+  .card.main .val { font-size:36px; color:var(--navy); }
   .card { background:#fff; border-radius:10px; padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
   .card .lbl { font-size:13px; color:var(--muted); }
   .card .val { font-size:30px; font-weight:bold; margin-top:4px; }
@@ -43,7 +45,8 @@
   <div id="err"></div>
 
   <div class="cards">
-    <div class="card"><div class="lbl">メットライフ目安（円で払うとき）</div><div class="val" id="conv">–</div><div class="sub" id="convSub"></div></div>
+    <div class="card main"><div class="lbl">メットライフ公式（保険料円入金特約用）</div><div class="val" id="official">–</div><div class="sub" id="officialSub"></div></div>
+    <div class="card"><div class="lbl">メットライフ目安（いまの相場）</div><div class="val" id="conv">–</div><div class="sub" id="convSub"></div></div>
     <div class="card"><div class="lbl">ドル円（市場）</div><div class="val" id="rate">–</div><div class="sub">Googleファイナンス・最大20分遅れ</div></div>
     <div class="card"><div class="lbl">目標まであと</div><div class="val" id="gap">–</div><div class="sub" id="gapSub"></div></div>
     <div class="card"><div class="lbl">支払い期限まで</div><div class="val" id="days">–</div><div class="sub" id="daysSub"></div></div>
@@ -61,8 +64,8 @@
   <div class="panel">
     <h2>毎日の記録</h2>
     <table>
-      <thead><tr><th>日付</th><th>ドル円</th><th>メットライフ目安</th><th>前日比</th><th>通知</th></tr></thead>
-      <tbody id="log"><tr><td colspan="5">読み込み中…</td></tr></tbody>
+      <thead><tr><th>日付</th><th>メットライフ公式</th><th>ドル円</th><th>メットライフ目安</th><th>前日比</th><th>通知</th></tr></thead>
+      <tbody id="log"><tr><td colspan="6">読み込み中…</td></tr></tbody>
     </table>
   </div>
 
@@ -102,9 +105,16 @@ function render() {
   document.getElementById('upd').textContent = s.updated + ' 時点';
   document.getElementById('rate').textContent = yen(s.rate);
   document.getElementById('conv').textContent = yen(s.conv);
-  document.getElementById('convSub').textContent = 'ドル円＋' + s.margin + '円で計算';
+  document.getElementById('convSub').textContent = 'ドル円＋' + s.margin + '円。明日以降のレートの見当に';
 
-  const judge = s.base === 'ドル円' ? s.rate : s.conv;
+  const oEl = document.getElementById('official');
+  oEl.textContent = yen(s.official);
+  document.getElementById('officialSub').textContent = s.official == null ? '取得できませんでした'
+    : s.officialIsToday ? s.officialDate + '　今日着金するとこのレート（三菱UFJ仲値' + s.ttm.toFixed(2) + '＋' + s.margin + '円）'
+    : '今日はまだ未公表（' + s.officialDate + 'のレート）。11時ごろ更新';
+  oEl.style.opacity = s.officialIsToday ? 1 : .5;
+
+  let judge = s.base === 'ドル円' ? s.rate : s.base === 'メットライフ目安' ? s.conv : (s.officialIsToday ? s.official : s.conv);
   const gap = judge - s.target;
   const gapEl = document.getElementById('gap');
   gapEl.textContent = gap <= 0 ? '達成' : gap.toFixed(2) + '円';
@@ -127,14 +137,15 @@ function render() {
   document.getElementById('mlink').href = s.metlifeUrl;
 
   const tb = document.getElementById('log');
-  tb.innerHTML = s.log.length ? '' : '<tr><td colspan="5">まだ記録がありません</td></tr>';
+  tb.innerHTML = s.log.length ? '' : '<tr><td colspan="6">まだ記録がありません</td></tr>';
   s.log.forEach(r => {
     const tr = document.createElement('tr');
     const diff = parseFloat(r.diff);
-    [r.date, r.rate, r.conv, r.diff, r.note].forEach((v, i) => {
+    [r.date, r.official || '–', r.rate, r.conv, r.diff, r.note].forEach((v, i) => {
       const td = document.createElement('td');
       td.textContent = v;
-      if (i === 3 && !isNaN(diff)) td.className = diff < 0 ? 'ok' : (diff > 0 ? 'warn' : '');
+      if (i === 1) td.style.fontWeight = 'bold';
+      if (i === 4 && !isNaN(diff)) td.className = diff < 0 ? 'ok' : (diff > 0 ? 'warn' : '');
       tr.appendChild(td);
     });
     tb.appendChild(tr);
