@@ -24,8 +24,24 @@
   .panel { background:#fff; border-radius:10px; padding:16px; margin-top:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
   .panel h2 { font-size:16px; margin:0 0 10px; }
   .chartbox { position:relative; height:340px; }
-  .range button { border:1px solid var(--navy); background:#fff; color:var(--navy); padding:4px 12px; border-radius:14px; cursor:pointer; margin-right:4px; }
+  .range { display:flex; gap:6px; margin-bottom:10px; max-width:420px; }
+  .range button { flex:1; border:1px solid var(--navy); background:#fff; color:var(--navy); padding:6px 0; border-radius:14px; cursor:pointer; font-size:14px; white-space:nowrap; }
   .range button.on { background:var(--navy); color:#fff; }
+  .legend { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:13px; color:#444; margin-bottom:6px; }
+  .legend span::before { content:""; display:inline-block; width:22px; height:0; margin-right:5px; vertical-align:middle; border-top:3px solid var(--c); }
+  .legend span.dash::before { border-top-style:dashed; border-top-width:2px; }
+  td.hol { color:#aaa; font-weight:normal !important; }
+  td .nt { display:block; font-size:11px; color:var(--warn); }
+  @media (max-width:600px) {
+    main { padding:10px; }
+    .panel { padding:12px; }
+    .card .val { font-size:26px; }
+    .card.main .val { font-size:30px; }
+    .chartbox { height:250px; }
+    .opt { display:none; }
+    th .lg { display:none; }
+    th, td { padding:8px 6px; font-size:15px; }
+  }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { padding:7px 8px; border-bottom:1px solid #e3e6ee; text-align:right; }
   th:first-child, td:first-child, th:last-child, td:last-child { text-align:left; }
@@ -57,6 +73,7 @@
     <div class="range" id="range">
       <button data-d="30">1か月</button><button data-d="90" class="on">3か月</button><button data-d="180">6か月</button><button data-d="365">1年</button>
     </div>
+    <div class="legend"><span style="--c:#1f3864">ドル円</span><span class="dash" style="--c:#8a9cc2">メットライフ目安</span><span class="dash" style="--c:#1a8f4a" id="lgTarget">目標</span></div>
     <div class="chartbox"><canvas id="chart"></canvas></div>
     <div class="note">グラフのドル円は欧州中央銀行の参照レート（1日1回）です。メットライフ目安はそれに上乗せ額を足した値です。</div>
   </div>
@@ -64,7 +81,7 @@
   <div class="panel">
     <h2>毎日の記録</h2>
     <table>
-      <thead><tr><th>日付</th><th>メットライフ公式</th><th>ドル円</th><th>メットライフ目安</th><th>前日比</th><th>通知</th></tr></thead>
+      <thead><tr><th>日付</th><th><span class="lg">メットライフ</span>公式</th><th>ドル円</th><th class="opt">メットライフ目安</th><th>前日比</th><th class="opt">通知</th></tr></thead>
       <tbody id="log"><tr><td colspan="6">読み込み中…</td></tr></tbody>
     </table>
   </div>
@@ -82,6 +99,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbyVwqpEX-JzpbefGv63FaLg
 
 let state = null, chart = null, days = 90;
 
+const shortDate = s => { const m = String(s).match(/\d{4}[-\/](\d{1,2})[-\/](\d{1,2})/); return m ? Number(m[1]) + '/' + Number(m[2]) : s; };
 function yen(n) { return (n == null || isNaN(n)) ? '–' : Number(n).toFixed(2) + '円'; }
 function ymd(d) { return d.toISOString().slice(0, 10); }
 
@@ -141,11 +159,23 @@ function render() {
   s.log.forEach(r => {
     const tr = document.createElement('tr');
     const diff = parseFloat(r.diff);
-    [r.date, r.official || '–', r.rate, r.conv, r.diff, r.note].forEach((v, i) => {
+    const dt = new Date(r.date.replace(/\//g, '-') + 'T00:00:00');
+    const dateLabel = (dt.getMonth() + 1) + '/' + dt.getDate() + '（' + '日月火水木金土'.charAt(dt.getDay()) + '）';
+    const cells = [
+      { t: dateLabel, note: r.note },
+      { t: r.official || '休', cls: r.official ? '' : 'hol', bold: true },
+      { t: r.rate },
+      { t: r.conv, cls: 'opt' },
+      { t: isNaN(diff) ? '' : (diff > 0 ? '+' : '') + diff.toFixed(2), cls: isNaN(diff) ? '' : diff < 0 ? 'ok' : (diff > 0 ? 'warn' : '') },
+      { t: r.note, cls: 'opt' }
+    ];
+    cells.forEach(c => {
       const td = document.createElement('td');
-      td.textContent = v;
-      if (i === 1) td.style.fontWeight = 'bold';
-      if (i === 4 && !isNaN(diff)) td.className = diff < 0 ? 'ok' : (diff > 0 ? 'warn' : '');
+      td.textContent = c.t;
+      if (c.cls) td.className = c.cls;
+      if (c.bold) td.style.fontWeight = 'bold';
+      if (c.note) { const s = document.createElement('span'); s.className = 'nt'; s.textContent = c.note; td.appendChild(s); }
+      if (c.t === '休') td.title = '祝日などで公表なし';
       tr.appendChild(td);
     });
     tb.appendChild(tr);
@@ -174,14 +204,20 @@ async function drawChart() {
     { label: 'メットライフ目安', data: vals.map(v => v + m), borderColor: '#8a9cc2', pointRadius: 0, borderWidth: 1.5, borderDash: [4, 3], tension: .2 },
     { label: '目標ライン（' + state.base + 'で' + state.target + '円）', data: vals.map(() => state.target), borderColor: '#1a8f4a', pointRadius: 0, borderWidth: 1.5, borderDash: [8, 4] }
   ];
+  const mobile = window.innerWidth <= 600;
+  document.getElementById('lgTarget').textContent = '目標 ' + state.target + '円（' + state.base + '）';
   if (chart) chart.destroy();
   chart = new Chart(document.getElementById('chart'), {
     type: 'line',
     data: { labels: labels, datasets: ds },
     options: {
       maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-      plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + '円' } } },
-      scales: { y: { ticks: { callback: v => v + '円' } }, x: { ticks: { maxTicksLimit: 8 } } }
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + '円' } } },
+      scales: {
+        y: { ticks: { font: { size: mobile ? 11 : 12 }, callback: v => mobile ? v : v + '円' } },
+        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: mobile ? 4 : 8, font: { size: mobile ? 11 : 12 },
+             callback: function (v) { return shortDate(this.getLabelForValue(v)); } } }
+      }
     }
   });
 }
