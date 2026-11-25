@@ -8,6 +8,9 @@
 <style>
   :root { --navy:#1f3864; --bg:#f4f6fa; --ok:#1a8f4a; --warn:#c0392b; --muted:#667; }
   * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+  html, body { overflow-x:hidden; }
+  .tblwrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
   body { margin:0; font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",Meiryo,sans-serif; background:var(--bg); color:#222; }
   header { background:var(--navy); color:#fff; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
   header h1 { margin:0; font-size:20px; }
@@ -45,7 +48,8 @@
     .chartbox { height:250px; }
     .opt { display:none; }
     th .lg { display:none; }
-    th, td { padding:8px 6px; font-size:15px; }
+    th, td { padding:8px 4px; font-size:14px; white-space:nowrap; }
+    td .nt { white-space:normal; }
   }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   th, td { padding:7px 8px; border-bottom:1px solid #e3e6ee; text-align:right; }
@@ -85,10 +89,10 @@
 
   <div class="panel">
     <h2>毎日の記録</h2>
-    <table>
+    <div class="tblwrap"><table>
       <thead><tr><th>日付</th><th><span class="lg">メットライフ</span>公式</th><th>ドル円</th><th class="opt">メットライフ目安</th><th>前日比</th><th class="opt">通知</th></tr></thead>
       <tbody id="log"><tr><td colspan="6">読み込み中…</td></tr></tbody>
-    </table>
+    </table></div>
   </div>
 
   <div class="panel">
@@ -165,7 +169,7 @@ function render() {
     const tr = document.createElement('tr');
     const diff = parseFloat(r.diff);
     const dt = new Date(r.date.replace(/\//g, '-') + 'T00:00:00');
-    const dateLabel = (dt.getMonth() + 1) + '/' + dt.getDate() + '（' + '日月火水木金土'.charAt(dt.getDay()) + '）';
+    const dateLabel = (dt.getMonth() + 1) + '/' + dt.getDate() + '(' + '日月火水木金土'.charAt(dt.getDay()) + ')';
     const cells = [
       { t: dateLabel, note: r.note },
       { t: r.official || '休', cls: r.official ? '' : 'hol', bold: true },
