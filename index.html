@@ -183,7 +183,7 @@ function render() {
     const dateLabel = (dt.getMonth() + 1) + '/' + dt.getDate() + '(' + '日月火水木金土'.charAt(dt.getDay()) + ')';
     const cells = [
       { t: dateLabel, note: r.note },
-      { t: r.official || '休', cls: r.official ? '' : 'hol', bold: true },
+      { t: r.official || (r.date === state.updated.slice(0, 10) ? '11時頃' : '休'), cls: r.official ? '' : 'hol', bold: true },
       { t: r.rate },
       { t: r.conv, cls: 'opt' },
       { t: isNaN(diff) ? '' : (diff > 0 ? '+' : '') + diff.toFixed(2), cls: isNaN(diff) ? '' : diff < 0 ? 'ok' : (diff > 0 ? 'warn' : '') },
@@ -216,7 +216,7 @@ async function drawChart() {
     const rev = state.log.slice().reverse();
     labels = rev.map(r => r.date); vals = rev.map(r => parseFloat(r.rate));
   }
-  if (state.rate) { labels.push('いま'); vals.push(state.rate); }
+  if (state.rate) { labels.push('今日'); vals.push(state.rate); }
 
   const m = state.margin;
   const ds = [
@@ -225,7 +225,8 @@ async function drawChart() {
     { label: '目標ライン（' + state.base + 'で' + state.target + '円）', data: vals.map(() => state.target), borderColor: '#1a8f4a', pointRadius: 0, borderWidth: 1.5, borderDash: [8, 4] }
   ];
   const mobile = window.innerWidth <= 600;
-  document.getElementById('lgTarget').textContent = '目標 ' + state.target + '円（' + state.base + '）';
+  document.getElementById('lgTarget').textContent = '目標 ' + state.target + '円';
+  const n = labels.length, step = Math.ceil(n / (mobile ? 4 : 7));
   if (chart) chart.destroy();
   chart = new Chart(document.getElementById('chart'), {
     type: 'line',
@@ -235,8 +236,12 @@ async function drawChart() {
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(2) + '円' } } },
       scales: {
         y: { ticks: { font: { size: mobile ? 11 : 12 }, callback: v => mobile ? v : v + '円' } },
-        x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: mobile ? 4 : 8, font: { size: mobile ? 11 : 12 },
-             callback: function (v) { return shortDate(this.getLabelForValue(v)); } } }
+        // 最初・最後（今日）と、その間を等間隔に表示
+        x: { ticks: { maxRotation: 0, autoSkip: false, font: { size: mobile ? 11 : 12 },
+             callback: function (v, i) {
+               const show = i === 0 || i === n - 1 || (i % step === 0 && n - 1 - i >= step * 0.6);
+               return show ? shortDate(this.getLabelForValue(v)) : '';
+             } } }
       }
     }
   });
