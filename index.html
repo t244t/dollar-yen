@@ -227,6 +227,7 @@ async function drawChart() {
   const mobile = window.innerWidth <= 600;
   document.getElementById('lgTarget').textContent = '目標 ' + state.target + '円';
   const n = labels.length, step = Math.ceil(n / (mobile ? 4 : 7));
+  const showTick = i => i === 0 || i === n - 1 || (i % step === 0 && n - 1 - i >= step * 0.6);
   if (chart) chart.destroy();
   chart = new Chart(document.getElementById('chart'), {
     type: 'line',
@@ -237,11 +238,9 @@ async function drawChart() {
       scales: {
         y: { ticks: { font: { size: mobile ? 11 : 12 }, callback: v => mobile ? v : v + '円' } },
         // 最初・最後（今日）と、その間を等間隔に表示
-        x: { ticks: { maxRotation: 0, autoSkip: false, font: { size: mobile ? 11 : 12 },
-             callback: function (v, i) {
-               const show = i === 0 || i === n - 1 || (i % step === 0 && n - 1 - i >= step * 0.6);
-               return show ? shortDate(this.getLabelForValue(v)) : '';
-             } } }
+        x: { grid: { color: c => showTick(c.index) ? 'rgba(0,0,0,0.1)' : 'transparent' },
+             ticks: { maxRotation: 0, autoSkip: false, font: { size: mobile ? 11 : 12 },
+             callback: function (v, i) { return showTick(i) ? shortDate(this.getLabelForValue(v)) : ''; } } }
       }
     }
   });
