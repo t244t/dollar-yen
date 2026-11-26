@@ -21,7 +21,7 @@
   .card.main .val { font-size:36px; color:var(--navy); }
   .card { background:#fff; border-radius:10px; padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
   .card .lbl { font-size:13px; color:var(--muted); }
-  .card .val { font-size:30px; font-weight:bold; margin-top:4px; }
+  .card .val { font-size:30px; font-weight:bold; margin-top:4px; white-space:nowrap; overflow:hidden; }
   .card .sub { font-size:12px; color:var(--muted); margin-top:4px; }
   .ok { color:var(--ok); } .warn { color:var(--warn); }
   .panel { background:#fff; border-radius:10px; padding:16px; margin-top:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
@@ -71,10 +71,10 @@
 
   <div class="cards">
     <div class="card main"><div class="lbl">メットライフ公式（保険料円入金特約用）</div><div class="val" id="official">–</div><div class="sub" id="officialSub"></div></div>
-    <div class="card"><div class="lbl">メットライフ目安（いまの相場）</div><div class="val" id="conv">–</div><div class="sub" id="convSub"></div></div>
-    <div class="card"><div class="lbl">ドル円（市場）</div><div class="val" id="rate">–</div><div class="sub">Googleファイナンス・最大20分遅れ</div></div>
+    <div class="card"><div class="lbl">メットライフ目安</div><div class="val" id="conv">–</div><div class="sub" id="convSub"></div></div>
+    <div class="card"><div class="lbl">ドル円（市場）</div><div class="val" id="rate">–</div><div class="sub">最大20分遅れ</div></div>
     <div class="card"><div class="lbl">目標まであと</div><div class="val" id="gap">–</div><div class="sub" id="gapSub"></div></div>
-    <div class="card"><div class="lbl">支払い期限まで</div><div class="val" id="days">–</div><div class="sub" id="daysSub"></div></div>
+    <div class="card"><div class="lbl">期限まで</div><div class="val" id="days">–</div><div class="sub" id="daysSub"></div></div>
   </div>
 
   <div class="panel">
@@ -118,6 +118,7 @@ async function load() {
     const res = await fetch(GAS_URL);
     state = await res.json();
     render();
+    fitAll();
     drawChart();
   } catch (e) {
     const el = document.getElementById('err');
@@ -127,18 +128,28 @@ async function load() {
   }
 }
 
+// 数字がカードからはみ出すときは文字を小さくする（LINEで文字が大きく表示される場合の対策）
+function fitAll() {
+  document.querySelectorAll('.card .val').forEach(el => {
+    el.style.fontSize = '';
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth && size > 12) { size -= 1; el.style.fontSize = size + 'px'; }
+  });
+}
+window.addEventListener('resize', () => { if (state) fitAll(); });
+
 function render() {
   const s = state;
   document.getElementById('upd').textContent = s.updated + ' 時点';
   document.getElementById('rate').textContent = yen(s.rate);
   document.getElementById('conv').textContent = yen(s.conv);
-  document.getElementById('convSub').textContent = 'ドル円＋' + s.margin + '円。明日以降のレートの見当に';
+  document.getElementById('convSub').textContent = 'いまの相場＋' + s.margin + '円';
 
   const oEl = document.getElementById('official');
   oEl.textContent = yen(s.official);
   document.getElementById('officialSub').textContent = s.official == null ? '取得できませんでした'
     : s.officialIsToday ? s.officialDate + '　今日着金するとこのレート（三菱UFJ仲値' + s.ttm.toFixed(2) + '＋' + s.margin + '円）'
-    : '今日はまだ未公表（' + s.officialDate + 'のレート）。11時ごろ更新';
+    : '今日の分は11時過ぎに反映。いまは' + shortDate(s.officialDate) + 'のレート';
   oEl.style.opacity = s.officialIsToday ? 1 : .5;
 
   let judge = s.base === 'ドル円' ? s.rate : s.base === 'メットライフ目安' ? s.conv : (s.officialIsToday ? s.official : s.conv);
@@ -146,7 +157,7 @@ function render() {
   const gapEl = document.getElementById('gap');
   gapEl.textContent = gap <= 0 ? '達成' : gap.toFixed(2) + '円';
   gapEl.className = 'val ' + (gap <= 0 ? 'ok' : '');
-  document.getElementById('gapSub').textContent = '目標 ' + s.target + '円以下（' + s.base + 'で判定）';
+  document.getElementById('gapSub').textContent = '目標 ' + s.target + '円以下';
 
   const dEl = document.getElementById('days');
   if (s.deadline) {
@@ -155,7 +166,7 @@ function render() {
     const n = Math.round((dl - t) / 86400000);
     dEl.textContent = n >= 0 ? n + '日' : '期限切れ';
     dEl.className = 'val ' + (n <= s.warnDays ? 'warn' : '');
-    document.getElementById('daysSub').textContent = s.deadline + '（' + s.warnDays + '日前から通知）';
+    document.getElementById('daysSub').textContent = shortDate(s.deadline) + 'まで';
   } else {
     dEl.textContent = '未設定';
     document.getElementById('daysSub').textContent = 'スプレッドシートの設定で入力';
